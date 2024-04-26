@@ -1,0 +1,98 @@
+---
+- name: Create hidden directory for audit script
+  hosts: nonprod
+  become: True
+#  log_path: /var/log/ansible/ansible.log
+ # interpreter_python: auto_silent
+
+  tasks: 
+    - name: Create hidden directory 
+      ansible.builtin.file:
+        path: /root/.audit
+        state: directory 
+        mode: 0700
+
+    - name: Create and populate initialize-cmdaudit.sh script
+      ansible.builtin.copy:
+        content: |  # Define the script content here
+                    # This file is part of the "CUSTOMIZED AUDITING" configuration and should not be removed.
+                    # Contact the UNIX Team or AWC IT-PE for assistance.
+                     mkdir -p /var/run/cmd_log; touch /var/run/cmd_log/_dev_ttyS{0..100}; touch /var/run/cmd_log/_dev_pts_{0..100}; chmod -R 777 /var/run/cmd_log
+        dest: /root/.audit/initialize-cmdaudit.sh
+        mode: 0755
+
+    - name: Set immutable attribute on initialize-cmdaudit.sh
+      ansible.builtin.file:
+        path: /root/.audit/initialize-cmdaudit.sh
+        attributes: +i
+
+    - name: Execute initialize-cmdaudit.sh script
+      command: sh /root/.audit/initialize-cmdaudit.sh
+
+    - name: Add cron entry for initialize-cmdaudit.sh
+      ansible.builtin.cron:
+        name: Run initialize-cmdaudit.sh on startup
+        user: root
+        job: "@reboot /root/.audit/initialize-cmdaudit.sh"
+      #  comment: "This entry is part of the \"CUSTOMIZED AUDITING\" configuration and should not be removed."
+      #
+    - name: Configure bash prompt for logging
+      ansible.builtin.blockinfile:
+        path: /etc/bashrc
+        create: yes
+       # append_newline: true
+       # prepend_newline: true
+        block: |
+          # Define the prompt configuration line here
+          # This entry is part of the "CUSTOMIZED AUDITING" configuration and should not be removed.
+          # Contact the UNIX Team or AWC IT-PE for assistance.
+          export PROMPT_COMMAND='RETRN_VAL=$?;TTY_SESSION=$(tty | tr '/' '_');test -n "$SSH_CLIENT" -a ! -s /var/run/cmd_log/$TTY_SESSION && echo $SSH_CLIENT > /var/run/cmd_log/$TTY_SESSION; printf "\033]0;%s@%s:%s\007" "${USER}" "${HOSTNAME%%.*}" "${PWD/#$HOME/~}";logger -p local6.debug "$(whoami) [$$]: $(history 1 | sed "s/^[ ]*[0-9]\+[ ]*//" ) [$RETRN_VAL] [[$(cat /var/run/cmd_log/$TTY_SESSION)]]"'
+
+    - name: Reload bash configuration (optional)
+    # You can uncomment this task if needed,
+    # but source /etc/bashrc might not be necessary depending on your environment
+      raw: source /etc/bashrc
+      ignore_errors: True
+
+    - name: create the log file
+      file:
+        path: /var/log/cmdlog.log
+        state: touch
+
+    - name: Configure rsyslog for local6 logs
+      ansible.builtin.blockinfile:
+        path: /etc/rsyslog.conf
+        create: no
+        block: |
+          # Customized audit logs
+          local6.*         /var/log/cmdlog.log
+        #insertbefore: "# End of rules"  # Insert the line before the end of rules section
+        #line: "local6.*         /var/log/cmdlog.log"
+        #comment: "# Customized audit logs"
+     
+    - name: Restart rsyslog service
+      service:
+        name: rsyslog
+        state: restarted
+
+    - name: Create logrotate configuration for /var/log/cmdlog.log
+      copy:
+        content: |
+          /var/log/cmdlog.log {
+          copytruncate
+          compress
+          size 100M
+          rotate 10
+          }
+        dest: /etc/logrotate.d/cmdlog
+        mode: 0644
+
+    - name: Set ownership and permissions on logrotate configuration file
+      file:
+        path: /etc/logrotate.d/cmdlog
+        owner: root
+        group: root
+
+    - name: Test log rotation (optional)
+      # Uncomment this task if you want to test log rotation immediately
+      shell: logrotate -f /etc/logrotate.d/cmdlog

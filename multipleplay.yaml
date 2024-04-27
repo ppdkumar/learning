@@ -1,0 +1,34 @@
+---
+- name : setup a http server 
+  hosts: nonprod
+  become: true 
+  remote_user: kumar
+  
+  tasks: 
+    - name: Install apache package 
+      yum: 
+        name: httpd
+        state: present 
+    - name: Copy the html file 
+      copy: 
+        src: index.html 
+        dest: /var/www/html
+
+    - name: start the web service 
+      service: 
+        name: httpd 
+        state: started 
+        enabled: yes 
+
+- name: test the webserver
+  hosts: nonprod
+  tasks: 
+    - name: connect the server 
+      uri: 
+        url: http://192.168.238.3
+        status_code: 200  
+      register: connection_result
+    - name: Show the result
+      debug: 
+        var: connection_result
+

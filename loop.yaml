@@ -1,0 +1,15 @@
+---
+- hosts: nonprod
+  become: true  # Ensure elevated privileges for file operations
+
+  tasks:
+  - name: Backup multiple files
+    file:
+      path: "{{ item }}"
+      dest: "/backups/{{ hostname }}_{{ item }}_{{ (filemtime | iso8601) }}.bak"
+      state: file
+    with_items:
+      - /etc/passwd
+      - /etc/shadow
+      - /etc/hosts
+
